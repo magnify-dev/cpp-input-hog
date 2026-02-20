@@ -19,6 +19,8 @@ Minimal kernel-mode input injection prototype. Mouse movement only.
 
 Output: `driver/bin/x64/Release/InputHog.sys` (or Debug)
 
+After pulling driver/shared changes, rebuild and reinstall/restart the driver service so controller and driver IOCTL contracts stay in sync.
+
 ---
 
 ## Build Control App (GUI)
@@ -73,6 +75,7 @@ sc start InputHog
 Right-click `InputHogControl.exe` → **Run as administrator**.
 
 **Paint test:** Open Paint, run the app, click **Test Square** or **Test Circle**. The cursor should move without touching the mouse.
+Use **Refresh** to see driver status details (callback found, request counters, NTSTATUS values).
 
 ---
 

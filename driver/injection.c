@@ -143,3 +143,8 @@ NTSTATUS InjectMouseMove(LONG DeltaX, LONG DeltaY)
 
     return STATUS_SUCCESS;
 }
+
+BOOLEAN InjectionIsReady(VOID)
+{
+    return (g_ServiceCallback != NULL && g_ClassDeviceObject != NULL) ? TRUE : FALSE;
+}

@@ -34,6 +34,10 @@ def _excepthook(exc_type, exc_value, exc_tb):
 sys.excepthook = _excepthook
 
 
+def _fmt_ntstatus(status: int) -> str:
+    return f"0x{status & 0xFFFFFFFF:08X}"
+
+
 class InputHogApp:
     def __init__(self):
         self.root = tk.Tk()
@@ -65,6 +69,8 @@ class InputHogApp:
         self.btn_refresh.pack(side=tk.RIGHT)
         self.driver_label = ttk.Label(status_frame, text="", foreground="gray")
         self.driver_label.pack(anchor=tk.W)
+        self.status_detail_label = ttk.Label(status_frame, text="", foreground="gray", wraplength=300, justify=tk.LEFT)
+        self.status_detail_label.pack(anchor=tk.W)
 
         # Test buttons
         test_frame = ttk.LabelFrame(self.root, text="Test Patterns", padding=8)
@@ -114,16 +120,43 @@ class InputHogApp:
         self._update_status()
         self._update_help()
 
+    def _refresh_driver_status(self) -> None:
+        if not self.connected:
+            self.driver_label.config(text="Driver not loaded")
+            self.status_detail_label.config(text="")
+            return
+
+        status = self.client.get_status()
+        if status is None:
+            err = self.client.get_last_error()
+            msg = ERROR_CODES.get(err, f"Win32 error {err}")
+            self.driver_label.config(text="Driver: InputHog.sys")
+            self.status_detail_label.config(text=f"Status query failed: {msg}")
+            _log(f"Status query failed: {msg}")
+            return
+
+        self.driver_label.config(text=f"Driver: InputHog.sys (status v{status['version']})")
+        injection = "ready" if status["injection_initialized"] else "not ready"
+        callback = "found" if status["callback_found"] else "missing"
+        details = (
+            f"Injection: {injection} | Callback: {callback}\n"
+            f"Requests: {status['total_requests']} total, {status['failed_requests']} failed\n"
+            f"Init: {_fmt_ntstatus(status['last_init_status'])} | "
+            f"Last inject: {_fmt_ntstatus(status['last_inject_status'])}"
+        )
+        self.status_detail_label.config(text=details)
+
     def _update_status(self) -> None:
         if self.connected:
             self.status_label.config(text="● Connected", foreground="green")
-            self.driver_label.config(text="Driver: InputHog.sys")
             self.btn_square.config(state=tk.NORMAL)
             self.btn_circle.config(state=tk.NORMAL)
             self.btn_move.config(state=tk.NORMAL)
+            self._refresh_driver_status()
         else:
             self.status_label.config(text="● Disconnected", foreground="red")
             self.driver_label.config(text="Driver not loaded")
+            self.status_detail_label.config(text="")
             self.btn_square.config(state=tk.DISABLED)
             self.btn_circle.config(state=tk.DISABLED)
             self.btn_move.config(state=tk.DISABLED)
@@ -180,6 +213,7 @@ class InputHogApp:
             self.btn_square.config(state=tk.NORMAL)
             self.btn_circle.config(state=tk.NORMAL)
             self.btn_move.config(state=tk.NORMAL)
+            self._refresh_driver_status()
 
     def _on_test_square(self) -> None:
         if not self.connected:
@@ -224,6 +258,8 @@ class InputHogApp:
         ok = move(self.client, x, y)
         err = self.client.get_last_error() if not ok else 0
         self._update_feedback(x, y, ok, err)
+        if self.connected:
+            self._refresh_driver_status()
 
     def run(self) -> None:
         self.root.mainloop()

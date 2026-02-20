@@ -4,6 +4,7 @@ InputHog controller — sends mouse move requests to the kernel driver via IOCTL
 
 import ctypes
 from ctypes import wintypes
+from typing import Optional
 
 # Constants (must match shared/ioctl.h)
 INPUT_HOG_DEVICE_TYPE = 0x8000
@@ -17,6 +18,9 @@ def _ctl_code(device_type: int, function: int, method: int, access: int) -> int:
 
 IOCTL_INPUT_HOG_MOVE_MOUSE = _ctl_code(
     INPUT_HOG_DEVICE_TYPE, 0x801, METHOD_BUFFERED, FILE_ANY_ACCESS
+)
+IOCTL_INPUT_HOG_GET_STATUS = _ctl_code(
+    INPUT_HOG_DEVICE_TYPE, 0x802, METHOD_BUFFERED, FILE_ANY_ACCESS
 )
 
 GENERIC_READ = 0x80000000
@@ -32,6 +36,19 @@ class MOUSE_MOVE_REQUEST(ctypes.Structure):
     _fields_ = [
         ("x", ctypes.c_long),
         ("y", ctypes.c_long),
+    ]
+
+
+class INPUT_HOG_STATUS(ctypes.Structure):
+    _pack_ = 1
+    _fields_ = [
+        ("version", ctypes.c_ulong),
+        ("injectionInitialized", ctypes.c_ulong),
+        ("callbackFound", ctypes.c_ulong),
+        ("lastInitStatus", ctypes.c_long),
+        ("lastInjectStatus", ctypes.c_long),
+        ("totalRequests", ctypes.c_ulong),
+        ("failedRequests", ctypes.c_ulong),
     ]
 
 
@@ -113,6 +130,39 @@ class InputHogClient:
         else:
             self._last_error = 0
         return bool(ok)
+
+    def get_status(self) -> Optional[dict]:
+        """Query current driver status. Returns dict on success, else None."""
+        if self._handle is None:
+            self._last_error = 6  # ERROR_INVALID_HANDLE
+            return None
+
+        out_status = INPUT_HOG_STATUS()
+        bytes_returned = wintypes.DWORD()
+        ok = ctypes.windll.kernel32.DeviceIoControl(
+            self._handle,
+            IOCTL_INPUT_HOG_GET_STATUS,
+            None,
+            0,
+            ctypes.byref(out_status),
+            ctypes.sizeof(out_status),
+            ctypes.byref(bytes_returned),
+            None,
+        )
+        if not ok:
+            self._last_error = ctypes.windll.kernel32.GetLastError()
+            return None
+
+        self._last_error = 0
+        return {
+            "version": int(out_status.version),
+            "injection_initialized": bool(out_status.injectionInitialized),
+            "callback_found": bool(out_status.callbackFound),
+            "last_init_status": int(out_status.lastInitStatus),
+            "last_inject_status": int(out_status.lastInjectStatus),
+            "total_requests": int(out_status.totalRequests),
+            "failed_requests": int(out_status.failedRequests),
+        }
 
     def __enter__(self) -> "InputHogClient":
         if not self.open():

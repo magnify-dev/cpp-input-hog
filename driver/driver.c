@@ -5,8 +5,25 @@
 
 #define DEVICE_NAME L"\\Device\\InputHog"
 #define SYMLINK_NAME L"\\DosDevices\\InputHog"
+#define INPUT_HOG_STATUS_VERSION 1
 
 static PDEVICE_OBJECT g_DeviceObject = NULL;
+static volatile LONG g_TotalRequests = 0;
+static volatile LONG g_FailedRequests = 0;
+static NTSTATUS g_LastInitStatus = STATUS_UNSUCCESSFUL;
+static NTSTATUS g_LastInjectStatus = STATUS_SUCCESS;
+static BOOLEAN g_InjectionInitialized = FALSE;
+
+static VOID FillStatus(PINPUT_HOG_STATUS status)
+{
+    status->version = INPUT_HOG_STATUS_VERSION;
+    status->injectionInitialized = g_InjectionInitialized ? 1u : 0u;
+    status->callbackFound = InjectionIsReady() ? 1u : 0u;
+    status->lastInitStatus = g_LastInitStatus;
+    status->lastInjectStatus = g_LastInjectStatus;
+    status->totalRequests = (ULONG)g_TotalRequests;
+    status->failedRequests = (ULONG)g_FailedRequests;
+}
 
 static NTSTATUS DeviceCreate(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 {
@@ -32,11 +49,29 @@ static NTSTATUS DeviceControl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 
     PIO_STACK_LOCATION stack = IoGetCurrentIrpStackLocation(Irp);
     NTSTATUS status = STATUS_SUCCESS;
+    ULONG_PTR information = 0;
 
     if (stack->Parameters.DeviceIoControl.IoControlCode == IOCTL_INPUT_HOG_MOVE_MOUSE) {
-        if (stack->Parameters.DeviceIoControl.InputBufferLength >= sizeof(MOUSE_MOVE_REQUEST)) {
+        if (Irp->AssociatedIrp.SystemBuffer == NULL) {
+            status = STATUS_INVALID_PARAMETER;
+        } else if (stack->Parameters.DeviceIoControl.InputBufferLength >= sizeof(MOUSE_MOVE_REQUEST)) {
             PMOUSE_MOVE_REQUEST req = (PMOUSE_MOVE_REQUEST)Irp->AssociatedIrp.SystemBuffer;
+            InterlockedIncrement(&g_TotalRequests);
             status = InjectMouseMove(req->x, req->y);
+            g_LastInjectStatus = status;
+            if (!NT_SUCCESS(status))
+                InterlockedIncrement(&g_FailedRequests);
+        } else {
+            status = STATUS_BUFFER_TOO_SMALL;
+        }
+    } else if (stack->Parameters.DeviceIoControl.IoControlCode == IOCTL_INPUT_HOG_GET_STATUS) {
+        if (Irp->AssociatedIrp.SystemBuffer == NULL) {
+            status = STATUS_INVALID_PARAMETER;
+        } else if (stack->Parameters.DeviceIoControl.OutputBufferLength >= sizeof(INPUT_HOG_STATUS)) {
+            PINPUT_HOG_STATUS outStatus = (PINPUT_HOG_STATUS)Irp->AssociatedIrp.SystemBuffer;
+            FillStatus(outStatus);
+            information = sizeof(INPUT_HOG_STATUS);
+            status = STATUS_SUCCESS;
         } else {
             status = STATUS_BUFFER_TOO_SMALL;
         }
@@ -45,7 +80,7 @@ static NTSTATUS DeviceControl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
     }
 
     Irp->IoStatus.Status = status;
-    Irp->IoStatus.Information = 0;
+    Irp->IoStatus.Information = information;
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
     return status;
 }
@@ -59,6 +94,7 @@ static VOID DriverUnload(PDRIVER_OBJECT DriverObject)
     if (g_DeviceObject)
         IoDeleteDevice(g_DeviceObject);
 
+    g_InjectionInitialized = FALSE;
     InjectionCleanup();
 }
 
@@ -67,8 +103,10 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
     UNREFERENCED_PARAMETER(RegistryPath);
 
     NTSTATUS status = InjectionInitialize();
+    g_LastInitStatus = status;
     if (!NT_SUCCESS(status))
         return status;
+    g_InjectionInitialized = InjectionIsReady();
 
     UNICODE_STRING deviceName;
     RtlInitUnicodeString(&deviceName, DEVICE_NAME);
@@ -83,6 +121,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
         &g_DeviceObject
     );
     if (!NT_SUCCESS(status)) {
+        g_InjectionInitialized = FALSE;
         InjectionCleanup();
         return status;
     }
@@ -92,6 +131,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
     status = IoCreateSymbolicLink(&symlinkName, &deviceName);
     if (!NT_SUCCESS(status)) {
         IoDeleteDevice(g_DeviceObject);
+        g_InjectionInitialized = FALSE;
         InjectionCleanup();
         return status;
     }

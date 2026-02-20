@@ -1,0 +1,31 @@
+name: Build Windows App
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r controller/requirements.txt
+
+      - name: Build executable
+        run: pyinstaller --clean InputHogControl.spec
+        working-directory: controller
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: InputHogControl-Windows
+          path: controller/dist/InputHogControl.exe

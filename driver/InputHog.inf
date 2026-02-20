@@ -1,0 +1,42 @@
+;
+; InputHog.inf
+;
+
+[Version]
+Signature   = "$WINDOWS NT$"
+Class       = System
+ClassGuid   = {4D36E97D-E325-11CE-BFC1-08002BE10318}
+Provider    = %ManufacturerName%
+CatalogFile = InputHog.cat
+DriverVer   = 01/01/2025,1.0.0.0
+PnpLockdown = 1
+
+[DestinationDirs]
+DefaultDestDir = 12
+
+[SourceDisksNames]
+1 = %DiskName%,,,""
+
+[SourceDisksFiles]
+InputHog.sys = 1,,
+
+[DefaultInstall.NTamd64]
+CopyFiles = Driver_Dir
+
+[DefaultInstall.NTamd64.Services]
+AddService = InputHog,,InputHog_Service_Inst
+
+[Driver_Dir]
+InputHog.sys
+
+[InputHog_Service_Inst]
+DisplayName    = %ServiceDesc%
+ServiceType    = 1
+StartType      = 3
+ErrorControl   = 1
+ServiceBinary  = %12%\InputHog.sys
+
+[Strings]
+ManufacturerName = "InputHog"
+DiskName        = "InputHog Installation Disk"
+ServiceDesc     = "InputHog Kernel Driver"

@@ -2,6 +2,11 @@
 REM Build debug exe with console window (shows tracebacks)
 cd /d "%~dp0"
 
+REM Close any running instance so PyInstaller can overwrite the exe
+taskkill /F /IM InputHogControl.exe 2>nul
+taskkill /F /IM InputHogControl-Debug.exe 2>nul
+timeout /t 1 /nobreak >nul
+
 pip install -r requirements.txt -q
 pyinstaller --clean InputHogControl-Debug.spec
 

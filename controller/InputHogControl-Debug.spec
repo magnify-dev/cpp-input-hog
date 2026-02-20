@@ -1,4 +1,4 @@
-p# -*- mode: python ; coding: utf-8 -*-
+# -*- mode: python ; coding: utf-8 -*-
 # Debug build: console window shows print/tracebacks. Use for debugging.
 
 a = Analysis(
@@ -6,7 +6,7 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=[],
-    hiddenimports=['client', 'movements'],
+    hiddenimports=['client', 'movements', 'recording', 'pynput', 'pynput.mouse', 'pynput.keyboard', 'pynput._util'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

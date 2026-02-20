@@ -286,6 +286,20 @@ What `setup-windows.ps1` does:
 
 ---
 
+### Record & Playback
+
+InputHog can record mouse movements, clicks, and keyboard input, then replay them or export as a standalone Python script.
+
+1. **Record:** Click **Record**, move the mouse, click, type—then **Stop**
+2. **Save:** Saves to `.json` (portable, editable)
+3. **Load:** Load a previously saved recording
+4. **Play:** Replays the current recording (mouse via driver, keyboard via `keybd_event`)
+5. **Export as .exe:** Creates a standalone `.py` script that embeds the recording—run it as Administrator to play the macro without the main app. No extra dependencies beyond Python.
+
+The exported script is self-contained (only needs `ctypes`, `time`) and works anywhere the InputHog driver is loaded. Keyboard events use user-mode `keybd_event`; mouse events use the kernel driver.
+
+---
+
 ## Project Structure
 
 ```

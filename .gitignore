@@ -10,6 +10,9 @@ __pycache__/
 # PyInstaller
 controller/build/
 controller/dist/
+
+# Recordings (user content)
+controller/recordings/
 *.manifest
 
 # Virtual environments

@@ -11,7 +11,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 
 from client import InputHogClient, ERROR_CODES
-from movements import test_square, test_circle, move
+from movements import test_square, test_circle, test_triangle, test_line, test_random_drag, move
 
 # Log file for debugging (next to exe, or current dir)
 def _log_path() -> Path:
@@ -43,7 +43,7 @@ class InputHogApp:
         self.root = tk.Tk()
         self.root.title("InputHog Control")
         self.root.resizable(False, False)
-        self.root.minsize(320, 280)
+        self.root.minsize(340, 380)
 
         self.client = InputHogClient()
         self.connected = False
@@ -72,15 +72,43 @@ class InputHogApp:
         self.status_detail_label = ttk.Label(status_frame, text="", foreground="gray", wraplength=300, justify=tk.LEFT)
         self.status_detail_label.pack(anchor=tk.W)
 
+        # Pattern options (delay, size)
+        opts_frame = ttk.LabelFrame(self.root, text="Pattern Options", padding=8)
+        opts_frame.pack(fill=tk.X, **pad)
+        opts_row = ttk.Frame(opts_frame)
+        opts_row.pack(fill=tk.X)
+        ttk.Label(opts_row, text="Delay (ms):").pack(side=tk.LEFT, padx=(0, 4))
+        self.entry_delay = ttk.Entry(opts_row, width=8)
+        self.entry_delay.pack(side=tk.LEFT, padx=(0, 12))
+        self.entry_delay.insert(0, "1000")
+        ttk.Label(opts_row, text="Size:").pack(side=tk.LEFT, padx=(12, 4))
+        self.entry_size = ttk.Entry(opts_row, width=6)
+        self.entry_size.pack(side=tk.LEFT, padx=(0, 12))
+        self.entry_size.insert(0, "50")
+        ttk.Label(opts_row, text="Radius:").pack(side=tk.LEFT, padx=(0, 4))
+        self.entry_radius = ttk.Entry(opts_row, width=6)
+        self.entry_radius.pack(side=tk.LEFT, padx=(0, 6))
+        self.entry_radius.insert(0, "30")
+
         # Test buttons
         test_frame = ttk.LabelFrame(self.root, text="Test Patterns", padding=8)
         test_frame.pack(fill=tk.X, **pad)
         btn_frame = ttk.Frame(test_frame)
         btn_frame.pack(fill=tk.X)
-        self.btn_square = ttk.Button(btn_frame, text="Test Square", command=self._on_test_square)
+        self.btn_square = ttk.Button(btn_frame, text="Square", command=self._on_test_square)
         self.btn_square.pack(side=tk.LEFT, padx=(0, 6))
-        self.btn_circle = ttk.Button(btn_frame, text="Test Circle", command=self._on_test_circle)
-        self.btn_circle.pack(side=tk.LEFT)
+        self.btn_circle = ttk.Button(btn_frame, text="Circle", command=self._on_test_circle)
+        self.btn_circle.pack(side=tk.LEFT, padx=(0, 6))
+        self.btn_triangle = ttk.Button(btn_frame, text="Triangle", command=self._on_test_triangle)
+        self.btn_triangle.pack(side=tk.LEFT, padx=(0, 6))
+        self.btn_line = ttk.Button(btn_frame, text="Line", command=self._on_test_line)
+        self.btn_line.pack(side=tk.LEFT)
+
+        # Second row: Random drag
+        btn_frame2 = ttk.Frame(test_frame)
+        btn_frame2.pack(fill=tk.X, pady=(6, 0))
+        self.btn_random_drag = ttk.Button(btn_frame2, text="Random Drag (right-click)", command=self._on_random_drag)
+        self.btn_random_drag.pack(side=tk.LEFT)
 
         # Custom move
         move_frame = ttk.LabelFrame(self.root, text="Custom Move", padding=8)
@@ -151,6 +179,9 @@ class InputHogApp:
             self.status_label.config(text="● Connected", foreground="green")
             self.btn_square.config(state=tk.NORMAL)
             self.btn_circle.config(state=tk.NORMAL)
+            self.btn_triangle.config(state=tk.NORMAL)
+            self.btn_line.config(state=tk.NORMAL)
+            self.btn_random_drag.config(state=tk.NORMAL)
             self.btn_move.config(state=tk.NORMAL)
             self._refresh_driver_status()
         else:
@@ -159,6 +190,9 @@ class InputHogApp:
             self.status_detail_label.config(text="")
             self.btn_square.config(state=tk.DISABLED)
             self.btn_circle.config(state=tk.DISABLED)
+            self.btn_triangle.config(state=tk.DISABLED)
+            self.btn_line.config(state=tk.DISABLED)
+            self.btn_random_drag.config(state=tk.DISABLED)
             self.btn_move.config(state=tk.DISABLED)
 
     def _update_help(self) -> None:
@@ -191,6 +225,9 @@ class InputHogApp:
         self.btn_refresh.config(state=tk.DISABLED)
         self.btn_square.config(state=tk.DISABLED)
         self.btn_circle.config(state=tk.DISABLED)
+        self.btn_triangle.config(state=tk.DISABLED)
+        self.btn_line.config(state=tk.DISABLED)
+        self.btn_random_drag.config(state=tk.DISABLED)
         self.btn_move.config(state=tk.DISABLED)
 
         def worker():
@@ -212,8 +249,20 @@ class InputHogApp:
         if self.connected:
             self.btn_square.config(state=tk.NORMAL)
             self.btn_circle.config(state=tk.NORMAL)
+            self.btn_triangle.config(state=tk.NORMAL)
+            self.btn_line.config(state=tk.NORMAL)
+            self.btn_random_drag.config(state=tk.NORMAL)
             self.btn_move.config(state=tk.NORMAL)
             self._refresh_driver_status()
+
+    def _get_pattern_opts(self) -> tuple[int, int, int, float]:
+        """Return (size, radius, steps, delay_ms). Raises ValueError on bad input."""
+        delay = float(self.entry_delay.get())
+        size = int(self.entry_size.get())
+        radius = int(self.entry_radius.get())
+        if delay < 0 or size < 1 or radius < 1:
+            raise ValueError("Delay, size, and radius must be positive.")
+        return size, radius, 24, delay
 
     def _on_test_square(self) -> None:
         if not self.connected:
@@ -221,11 +270,16 @@ class InputHogApp:
         if not self.connected:
             messagebox.showerror("Not Connected", "Driver not loaded. See instructions below.")
             return
+        try:
+            size, _, _, delay = self._get_pattern_opts()
+        except ValueError as e:
+            messagebox.showerror("Invalid Input", str(e))
+            return
 
         def do():
             def on_move(dx, dy, ok, err=0):
                 self.root.after(0, lambda d=dx, e=dy, o=ok, r=err: self._update_feedback(d, e, o, r))
-            test_square(self.client, size=50, delay_ms=30, on_move=on_move)
+            test_square(self.client, size=size, delay_ms=delay, on_move=on_move)
 
         self._run_in_thread(do)
 
@@ -235,11 +289,73 @@ class InputHogApp:
         if not self.connected:
             messagebox.showerror("Not Connected", "Driver not loaded. See instructions below.")
             return
+        try:
+            _, radius, steps, delay = self._get_pattern_opts()
+        except ValueError as e:
+            messagebox.showerror("Invalid Input", str(e))
+            return
 
         def do():
             def on_move(dx, dy, ok, err=0):
                 self.root.after(0, lambda d=dx, e=dy, o=ok, r=err: self._update_feedback(d, e, o, r))
-            test_circle(self.client, radius=30, steps=24, delay_ms=25, on_move=on_move)
+            test_circle(self.client, radius=radius, steps=steps, delay_ms=delay, on_move=on_move)
+
+        self._run_in_thread(do)
+
+    def _on_test_triangle(self) -> None:
+        if not self.connected:
+            self._check_connection()
+        if not self.connected:
+            messagebox.showerror("Not Connected", "Driver not loaded. See instructions below.")
+            return
+        try:
+            size, _, _, delay = self._get_pattern_opts()
+        except ValueError as e:
+            messagebox.showerror("Invalid Input", str(e))
+            return
+
+        def do():
+            def on_move(dx, dy, ok, err=0):
+                self.root.after(0, lambda d=dx, e=dy, o=ok, r=err: self._update_feedback(d, e, o, r))
+            test_triangle(self.client, size=size, delay_ms=delay, on_move=on_move)
+
+        self._run_in_thread(do)
+
+    def _on_test_line(self) -> None:
+        if not self.connected:
+            self._check_connection()
+        if not self.connected:
+            messagebox.showerror("Not Connected", "Driver not loaded. See instructions below.")
+            return
+        try:
+            size, _, steps, delay = self._get_pattern_opts()
+        except ValueError as e:
+            messagebox.showerror("Invalid Input", str(e))
+            return
+
+        def do():
+            def on_move(dx, dy, ok, err=0):
+                self.root.after(0, lambda d=dx, e=dy, o=ok, r=err: self._update_feedback(d, e, o, r))
+            test_line(self.client, length=size * 2, steps=min(steps, 20), delay_ms=delay, horizontal=True, on_move=on_move)
+
+        self._run_in_thread(do)
+
+    def _on_random_drag(self) -> None:
+        if not self.connected:
+            self._check_connection()
+        if not self.connected:
+            messagebox.showerror("Not Connected", "Driver not loaded. See instructions below.")
+            return
+        try:
+            _, _, steps, delay = self._get_pattern_opts()
+        except ValueError as e:
+            messagebox.showerror("Invalid Input", str(e))
+            return
+
+        def do():
+            def on_move(dx, dy, ok, err=0):
+                self.root.after(0, lambda d=dx, e=dy, o=ok, r=err: self._update_feedback(d, e, o, r))
+            test_random_drag(self.client, delay_ms=delay, steps=min(steps, 30), on_move=on_move)
 
         self._run_in_thread(do)
 

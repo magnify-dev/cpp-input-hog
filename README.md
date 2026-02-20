@@ -5,7 +5,8 @@ Minimal kernel-mode input injection prototype. Mouse movement only.
 ## Prerequisites
 
 - **Windows 10/11** (x64)
-- **Visual Studio** with **Windows Driver Kit (WDK)** (for driver)
+- **Visual Studio 2022** with **Desktop development with C++** workload
+- **Windows Driver Kit (WDK)** — use the **standalone installer** from [Microsoft](https://learn.microsoft.com/en-us/windows-hardware/drivers/download-the-wdk) (the WDK in VS Installer alone may miss kernel headers)
 - **Test signing** enabled: `bcdedit /set testsigning on` (reboot required)
 - **Python 3** (for controller)
 
@@ -13,11 +14,25 @@ Minimal kernel-mode input injection prototype. Mouse movement only.
 
 ## Build Driver
 
+### Option A: Visual Studio
+
 1. Open `InputHog.sln` in Visual Studio
 2. Select **x64** platform, **Release** or **Debug**
 3. Build Solution (F7)
 
 Output: `driver/bin/x64/Release/InputHog.sys` (or Debug)
+
+### Option B: CMake (command line)
+
+```powershell
+# From repo root. Run in "Developer Command Prompt for VS" or after vcvars64.bat
+mkdir build
+cd build
+cmake -G Ninja -A x64 ..
+cmake --build . --config Release
+```
+
+Output: `build/driver/InputHog.sys`
 
 After pulling driver/shared changes, rebuild and reinstall/restart the driver service so controller and driver IOCTL contracts stay in sync.
 
@@ -112,6 +127,35 @@ cd controller
 python app.py
 ```
 Run as Administrator.
+
+---
+
+## Troubleshooting
+
+### Driver fails to start (error 577: "cannot verify digital signature")
+
+Even with test signing enabled, some systems reject unsigned drivers. **Test-sign the driver**:
+
+```powershell
+.\sign-driver.ps1
+.\setup-windows.ps1 -EnableTestSigning
+```
+
+The script creates a test certificate, installs it, and signs the driver.
+
+### "Cannot open include file: ntddk.h"
+
+The WDK kernel-mode headers are missing. Install the **full WDK**:
+
+1. Download the WDK from: https://learn.microsoft.com/en-us/windows-hardware/drivers/download-the-wdk  
+2. Run the installer — it will add the `km` (kernel-mode) headers to `C:\Program Files (x86)\Windows Kits\10\Include\<version>\km\`
+3. Restart Visual Studio and rebuild
+
+**Note:** Visual Studio Community 2026 Insiders may not fully integrate with WDK. If issues persist, try **Visual Studio 2022** (non-Insiders).
+
+### Spectre-mitigated libraries required
+
+Install from VS Installer → Individual components → search "Spectre" → add **C++ Spectre-mitigated libraries for x64/x86**. Or we disable Spectre in the project (already done).
 
 ---
 

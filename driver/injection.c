@@ -31,6 +31,8 @@ typedef VOID (NTAPI *MOUSE_SERVICE_CALLBACK)(
 );
 
 #define MOUSE_MOVE_RELATIVE 0
+#define MOUSE_RIGHT_BUTTON_DOWN 0x0004
+#define MOUSE_RIGHT_BUTTON_UP   0x0008
 
 static PDEVICE_OBJECT g_ClassDeviceObject = NULL;
 static MOUSE_SERVICE_CALLBACK g_ServiceCallback = NULL;
@@ -130,6 +132,29 @@ NTSTATUS InjectMouseMove(LONG DeltaX, LONG DeltaY)
     data.UnitId = 0;
     data.Flags = MOUSE_MOVE_RELATIVE;
     data.ButtonFlags = 0;
+    data.LastX = DeltaX;
+    data.LastY = DeltaY;
+
+    ULONG consumed = 0;
+    g_ServiceCallback(
+        g_ClassDeviceObject,
+        &data,
+        &data + 1,
+        &consumed
+    );
+
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS InjectMouseInput(USHORT ButtonFlags, LONG DeltaX, LONG DeltaY)
+{
+    if (!g_ServiceCallback || !g_ClassDeviceObject)
+        return STATUS_DEVICE_NOT_READY;
+
+    MOUSE_INPUT_DATA data = { 0 };
+    data.UnitId = 0;
+    data.Flags = MOUSE_MOVE_RELATIVE;
+    data.ButtonFlags = ButtonFlags;
     data.LastX = DeltaX;
     data.LastY = DeltaY;
 

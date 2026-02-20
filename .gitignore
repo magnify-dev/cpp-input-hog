@@ -21,12 +21,22 @@ env/
 .vs/
 driver/bin/
 driver/obj/
+*.sys
+
+# CMake
+build/
+cmake-build-*/
+cmake-user-presets.json
+out/
 *.user
 *.suo
 *.sdf
 *.opensdf
 *.VC.db
 *.vcxproj.user
+
+# Test signing
+InputHogTest.cer
 
 # Debug / logs
 inputhog_debug.log

@@ -19,6 +19,9 @@ def _ctl_code(device_type: int, function: int, method: int, access: int) -> int:
 IOCTL_INPUT_HOG_MOVE_MOUSE = _ctl_code(
     INPUT_HOG_DEVICE_TYPE, 0x801, METHOD_BUFFERED, FILE_ANY_ACCESS
 )
+IOCTL_INPUT_HOG_MOUSE_INPUT = _ctl_code(
+    INPUT_HOG_DEVICE_TYPE, 0x803, METHOD_BUFFERED, FILE_ANY_ACCESS
+)
 IOCTL_INPUT_HOG_GET_STATUS = _ctl_code(
     INPUT_HOG_DEVICE_TYPE, 0x802, METHOD_BUFFERED, FILE_ANY_ACCESS
 )
@@ -34,6 +37,20 @@ FILE_ATTRIBUTE_NORMAL = 0x80
 class MOUSE_MOVE_REQUEST(ctypes.Structure):
     _pack_ = 1
     _fields_ = [
+        ("x", ctypes.c_long),
+        ("y", ctypes.c_long),
+    ]
+
+
+# Mouse button flags (from ntddmou.h)
+MOUSE_RIGHT_BUTTON_DOWN = 0x0004
+MOUSE_RIGHT_BUTTON_UP = 0x0008
+
+
+class MOUSE_INPUT_REQUEST(ctypes.Structure):
+    _pack_ = 1
+    _fields_ = [
+        ("buttonFlags", ctypes.c_ushort),
         ("x", ctypes.c_long),
         ("y", ctypes.c_long),
     ]
@@ -118,6 +135,33 @@ class InputHogClient:
         ok = ctypes.windll.kernel32.DeviceIoControl(
             self._handle,
             IOCTL_INPUT_HOG_MOVE_MOUSE,
+            buffer,
+            ctypes.sizeof(req),
+            None,
+            0,
+            ctypes.byref(bytes_returned),
+            None,
+        )
+        if not ok:
+            self._last_error = ctypes.windll.kernel32.GetLastError()
+        else:
+            self._last_error = 0
+        return bool(ok)
+
+    def mouse_input(self, button_flags: int, x: int, y: int) -> bool:
+        """Send mouse input (buttons + movement). Returns True if IOCTL succeeded."""
+        if self._handle is None:
+            self._last_error = 6
+            return False
+
+        req = MOUSE_INPUT_REQUEST(buttonFlags=button_flags, x=x, y=y)
+        buffer = ctypes.create_string_buffer(ctypes.sizeof(req))
+        ctypes.memmove(buffer, ctypes.byref(req), ctypes.sizeof(req))
+
+        bytes_returned = wintypes.DWORD()
+        ok = ctypes.windll.kernel32.DeviceIoControl(
+            self._handle,
+            IOCTL_INPUT_HOG_MOUSE_INPUT,
             buffer,
             ctypes.sizeof(req),
             None,

@@ -1,4 +1,4 @@
-# -*- mode: python ; coding: utf-8 -*-
+p# -*- mode: python ; coding: utf-8 -*-
 # Debug build: console window shows print/tracebacks. Use for debugging.
 
 a = Analysis(

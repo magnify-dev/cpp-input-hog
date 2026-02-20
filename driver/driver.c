@@ -64,6 +64,19 @@ static NTSTATUS DeviceControl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
         } else {
             status = STATUS_BUFFER_TOO_SMALL;
         }
+    } else if (stack->Parameters.DeviceIoControl.IoControlCode == IOCTL_INPUT_HOG_MOUSE_INPUT) {
+        if (Irp->AssociatedIrp.SystemBuffer == NULL) {
+            status = STATUS_INVALID_PARAMETER;
+        } else if (stack->Parameters.DeviceIoControl.InputBufferLength >= sizeof(MOUSE_INPUT_REQUEST)) {
+            PMOUSE_INPUT_REQUEST req = (PMOUSE_INPUT_REQUEST)Irp->AssociatedIrp.SystemBuffer;
+            InterlockedIncrement(&g_TotalRequests);
+            status = InjectMouseInput(req->buttonFlags, req->x, req->y);
+            g_LastInjectStatus = status;
+            if (!NT_SUCCESS(status))
+                InterlockedIncrement(&g_FailedRequests);
+        } else {
+            status = STATUS_BUFFER_TOO_SMALL;
+        }
     } else if (stack->Parameters.DeviceIoControl.IoControlCode == IOCTL_INPUT_HOG_GET_STATUS) {
         if (Irp->AssociatedIrp.SystemBuffer == NULL) {
             status = STATUS_INVALID_PARAMETER;

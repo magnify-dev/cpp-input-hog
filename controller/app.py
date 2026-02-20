@@ -11,6 +11,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
 from client import InputHogClient, ERROR_CODES
+from backend_user32 import User32Backend
 from movements import test_square, test_circle, test_triangle, test_line, test_random_drag, move
 from recording import MouseRecorder, save_recording, load_recording, play_recording
 
@@ -58,6 +59,8 @@ class InputHogApp:
         self.root.minsize(380, 480)
 
         self.client = InputHogClient()
+        self._user32_backend = User32Backend()
+        self._use_driver = True  # True = driver, False = user32
         self.connected = False
         self.error_count = 0
         self.last_move = (0, 0)
@@ -68,7 +71,7 @@ class InputHogApp:
         self._recording = False
 
         self._build_ui()
-        self._check_connection()
+        self._on_mode_changed()
 
     def _build_ui(self) -> None:
         pad = {"padx": 12, "pady": 6}
@@ -80,6 +83,17 @@ class InputHogApp:
         status_row.pack(fill=tk.X)
         self.status_label = ttk.Label(status_row, text="Checking...")
         self.status_label.pack(side=tk.LEFT)
+        ttk.Label(status_row, text="Input:").pack(side=tk.LEFT, padx=(12, 4))
+        self.mode_var = tk.StringVar(value="Driver (kernel)")
+        self.mode_combo = ttk.Combobox(
+            status_row,
+            textvariable=self.mode_var,
+            values=("Driver (kernel)", "User32 (pyautogui)"),
+            state="readonly",
+            width=18,
+        )
+        self.mode_combo.pack(side=tk.LEFT, padx=(0, 6))
+        self.mode_combo.bind("<<ComboboxSelected>>", lambda e: self._on_mode_changed())
         self.btn_refresh = ttk.Button(status_row, text="Refresh", command=self._check_connection, width=8)
         self.btn_refresh.pack(side=tk.RIGHT)
         self.driver_label = ttk.Label(status_frame, text="", foreground="gray")
@@ -173,8 +187,30 @@ class InputHogApp:
         self.help_text = tk.Text(self.root, height=5, width=45, wrap=tk.WORD, state=tk.DISABLED, font=("Segoe UI", 9))
         self.help_text.pack(fill=tk.X, **pad)
 
+    def _backend(self):
+        """Current input backend (driver or user32)."""
+        return self.client if self._use_driver else self._user32_backend
+
+    def _on_mode_changed(self) -> None:
+        val = self.mode_var.get()
+        self._use_driver = val == "Driver (kernel)"
+        if self._use_driver:
+            self._check_connection()
+        else:
+            if self.client._handle is not None:
+                self.client.close()
+            self.connected = User32Backend.is_available()
+            if not self.connected:
+                self.status_label.config(text="● User32 unavailable (install pyautogui)", foreground="red")
+                self.driver_label.config(text="pip install pyautogui")
+            self._update_status()
+            self._update_help()
+
     def _check_connection(self) -> None:
         if self._busy:
+            return
+        if not self._use_driver:
+            self._on_mode_changed()
             return
         if self.client._handle is not None:
             self.client.close()
@@ -186,6 +222,14 @@ class InputHogApp:
         self._update_help()
 
     def _refresh_driver_status(self) -> None:
+        if not self._use_driver:
+            if self.connected:
+                self.driver_label.config(text="Using pyautogui (user-mode, no driver)")
+                self.status_detail_label.config(text="")
+            else:
+                self.driver_label.config(text="pyautogui not installed")
+                self.status_detail_label.config(text="")
+            return
         if not self.connected:
             self.driver_label.config(text="Driver not loaded")
             self.status_detail_label.config(text="")
@@ -213,7 +257,8 @@ class InputHogApp:
 
     def _update_status(self) -> None:
         if self.connected:
-            self.status_label.config(text="● Connected", foreground="green")
+            mode = "Driver" if self._use_driver else "User32"
+            self.status_label.config(text=f"● Connected ({mode})", foreground="green")
             self.btn_square.config(state=tk.NORMAL)
             self.btn_circle.config(state=tk.NORMAL)
             self.btn_triangle.config(state=tk.NORMAL)
@@ -222,8 +267,9 @@ class InputHogApp:
             self.btn_move.config(state=tk.NORMAL)
             self._refresh_driver_status()
         else:
-            self.status_label.config(text="● Disconnected", foreground="red")
-            self.driver_label.config(text="Driver not loaded")
+            lbl = "Driver not loaded" if self._use_driver else "User32 unavailable"
+            self.status_label.config(text=f"● {lbl}", foreground="red")
+            self.driver_label.config(text="Driver not loaded" if self._use_driver else "pip install pyautogui")
             self.status_detail_label.config(text="")
             self.btn_square.config(state=tk.DISABLED)
             self.btn_circle.config(state=tk.DISABLED)
@@ -253,10 +299,13 @@ class InputHogApp:
         self.help_text.config(state=tk.NORMAL)
         self.help_text.delete(1.0, tk.END)
         if not self.connected:
-            self.help_text.insert(tk.END, "1. Enable test signing: bcdedit /set testsigning on (reboot)\n")
-            self.help_text.insert(tk.END, "2. Install driver: sc create InputHog type= kernel binPath= \"path\\InputHog.sys\"\n")
-            self.help_text.insert(tk.END, "3. Start driver: sc start InputHog\n")
-            self.help_text.insert(tk.END, "4. Run this app as Administrator")
+            if self._use_driver:
+                self.help_text.insert(tk.END, "1. Enable test signing: bcdedit /set testsigning on (reboot)\n")
+                self.help_text.insert(tk.END, "2. Install driver: sc create InputHog type= kernel binPath= \"path\\InputHog.sys\"\n")
+                self.help_text.insert(tk.END, "3. Start driver: sc start InputHog\n")
+                self.help_text.insert(tk.END, "4. Run this app as Administrator")
+            else:
+                self.help_text.insert(tk.END, "Install pyautogui: pip install pyautogui")
         self.help_text.config(state=tk.DISABLED)
 
     def _on_record(self) -> None:
@@ -310,7 +359,7 @@ class InputHogApp:
         def do():
             def on_ev(ev: dict, ok: bool) -> None:
                 pass  # could update UI
-            success = play_recording(self.client, self._current_recording, on_ev)
+            success = play_recording(self._backend(), self._current_recording, on_ev)
             self.root.after(0, lambda: self.rec_status_label.config(text=f"Played {success}/{len(self._current_recording)} events"))
 
         self._run_in_thread(do)
@@ -472,7 +521,7 @@ if __name__ == "__main__":
         if not self.connected:
             self._check_connection()
         if not self.connected:
-            messagebox.showerror("Not Connected", "Driver not loaded. See instructions below.")
+            messagebox.showerror("Not Connected", "Input backend not ready. See instructions below.")
             return
         try:
             size, _, _, delay = self._get_pattern_opts()
@@ -483,7 +532,7 @@ if __name__ == "__main__":
         def do():
             def on_move(dx, dy, ok, err=0):
                 self.root.after(0, lambda d=dx, e=dy, o=ok, r=err: self._update_feedback(d, e, o, r))
-            test_square(self.client, size=size, delay_ms=delay, on_move=on_move)
+            test_square(self._backend(), size=size, delay_ms=delay, on_move=on_move)
 
         self._run_in_thread(do)
 
@@ -491,7 +540,7 @@ if __name__ == "__main__":
         if not self.connected:
             self._check_connection()
         if not self.connected:
-            messagebox.showerror("Not Connected", "Driver not loaded. See instructions below.")
+            messagebox.showerror("Not Connected", "Input backend not ready. See instructions below.")
             return
         try:
             _, radius, steps, delay = self._get_pattern_opts()
@@ -502,7 +551,7 @@ if __name__ == "__main__":
         def do():
             def on_move(dx, dy, ok, err=0):
                 self.root.after(0, lambda d=dx, e=dy, o=ok, r=err: self._update_feedback(d, e, o, r))
-            test_circle(self.client, radius=radius, steps=steps, delay_ms=delay, on_move=on_move)
+            test_circle(self._backend(), radius=radius, steps=steps, delay_ms=delay, on_move=on_move)
 
         self._run_in_thread(do)
 
@@ -510,7 +559,7 @@ if __name__ == "__main__":
         if not self.connected:
             self._check_connection()
         if not self.connected:
-            messagebox.showerror("Not Connected", "Driver not loaded. See instructions below.")
+            messagebox.showerror("Not Connected", "Input backend not ready. See instructions below.")
             return
         try:
             size, _, _, delay = self._get_pattern_opts()
@@ -521,7 +570,7 @@ if __name__ == "__main__":
         def do():
             def on_move(dx, dy, ok, err=0):
                 self.root.after(0, lambda d=dx, e=dy, o=ok, r=err: self._update_feedback(d, e, o, r))
-            test_triangle(self.client, size=size, delay_ms=delay, on_move=on_move)
+            test_triangle(self._backend(), size=size, delay_ms=delay, on_move=on_move)
 
         self._run_in_thread(do)
 
@@ -529,7 +578,7 @@ if __name__ == "__main__":
         if not self.connected:
             self._check_connection()
         if not self.connected:
-            messagebox.showerror("Not Connected", "Driver not loaded. See instructions below.")
+            messagebox.showerror("Not Connected", "Input backend not ready. See instructions below.")
             return
         try:
             size, _, steps, delay = self._get_pattern_opts()
@@ -540,7 +589,7 @@ if __name__ == "__main__":
         def do():
             def on_move(dx, dy, ok, err=0):
                 self.root.after(0, lambda d=dx, e=dy, o=ok, r=err: self._update_feedback(d, e, o, r))
-            test_line(self.client, length=size * 2, steps=min(steps, 20), delay_ms=delay, horizontal=True, on_move=on_move)
+            test_line(self._backend(), length=size * 2, steps=min(steps, 20), delay_ms=delay, horizontal=True, on_move=on_move)
 
         self._run_in_thread(do)
 
@@ -548,7 +597,7 @@ if __name__ == "__main__":
         if not self.connected:
             self._check_connection()
         if not self.connected:
-            messagebox.showerror("Not Connected", "Driver not loaded. See instructions below.")
+            messagebox.showerror("Not Connected", "Input backend not ready. See instructions below.")
             return
         try:
             _, _, steps, delay = self._get_pattern_opts()
@@ -559,7 +608,7 @@ if __name__ == "__main__":
         def do():
             def on_move(dx, dy, ok, err=0):
                 self.root.after(0, lambda d=dx, e=dy, o=ok, r=err: self._update_feedback(d, e, o, r))
-            test_random_drag(self.client, delay_ms=delay, steps=min(steps, 30), on_move=on_move)
+            test_random_drag(self._backend(), delay_ms=delay, steps=min(steps, 30), on_move=on_move)
 
         self._run_in_thread(do)
 
@@ -567,7 +616,7 @@ if __name__ == "__main__":
         if not self.connected:
             self._check_connection()
         if not self.connected:
-            messagebox.showerror("Not Connected", "Driver not loaded. See instructions below.")
+            messagebox.showerror("Not Connected", "Input backend not ready. See instructions below.")
             return
         try:
             x = int(self.entry_x.get())
@@ -575,8 +624,8 @@ if __name__ == "__main__":
         except ValueError:
             messagebox.showerror("Invalid Input", "X and Y must be integers.")
             return
-        ok = move(self.client, x, y)
-        err = self.client.get_last_error() if not ok else 0
+        ok = move(self._backend(), x, y)
+        err = self._backend().get_last_error() if not ok else 0
         self._update_feedback(x, y, ok, err)
         if self.connected:
             self._refresh_driver_status()

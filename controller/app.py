@@ -2,12 +2,36 @@
 InputHog Control — GUI for testing kernel-mode mouse injection.
 """
 
+import sys
 import threading
+import traceback
+from pathlib import Path
+
 import tkinter as tk
 from tkinter import ttk, messagebox
 
-from client import InputHogClient
+from client import InputHogClient, ERROR_CODES
 from movements import test_square, test_circle, move
+
+# Log file for debugging (next to exe, or current dir)
+def _log_path() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).parent / "inputhog_debug.log"
+    return Path.cwd() / "inputhog_debug.log"
+
+def _log(msg: str) -> None:
+    try:
+        with open(_log_path(), "a", encoding="utf-8") as f:
+            f.write(msg + "\n")
+    except Exception:
+        pass
+
+def _excepthook(exc_type, exc_value, exc_tb):
+    tb = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
+    _log(f"Uncaught exception:\n{tb}")
+    sys.__excepthook__(exc_type, exc_value, exc_tb)
+
+sys.excepthook = _excepthook
 
 
 class InputHogApp:
@@ -21,6 +45,7 @@ class InputHogApp:
         self.connected = False
         self.error_count = 0
         self.last_move = (0, 0)
+        self._last_error_msg = ""
         self._busy = False
 
         self._build_ui()
@@ -80,6 +105,9 @@ class InputHogApp:
         if self.client._handle:
             self.client.close()
         self.connected = self.client.open()
+        if not self.connected:
+            err = self.client.get_last_error()
+            _log(f"Connection failed: {ERROR_CODES.get(err, f'Win32 error {err}')}")
         self._update_status()
         self._update_help()
 
@@ -107,11 +135,17 @@ class InputHogApp:
             self.help_text.insert(tk.END, "4. Run this app as Administrator")
         self.help_text.config(state=tk.DISABLED)
 
-    def _update_feedback(self, dx: int, dy: int, ok: bool) -> None:
+    def _update_feedback(self, dx: int, dy: int, ok: bool, error_code: int = 0) -> None:
         self.last_move = (dx, dy)
         if not ok:
             self.error_count += 1
-        self.fb_label.config(text=f"Last: ({dx}, {dy})  |  Errors: {self.error_count}")
+            msg = ERROR_CODES.get(error_code, f"Win32 error {error_code}")
+            if not self._last_error_msg or self.error_count == 1:
+                self._last_error_msg = msg
+                _log(f"Move failed: ({dx},{dy}) -> {msg} (code {error_code})")
+            self.fb_label.config(text=f"Last: ({dx}, {dy})  |  Errors: {self.error_count}\n{msg}")
+        else:
+            self.fb_label.config(text=f"Last: ({dx}, {dy})  |  Errors: {self.error_count}")
 
     def _run_in_thread(self, fn, *args, **kwargs) -> None:
         if self._busy:
@@ -125,7 +159,10 @@ class InputHogApp:
             try:
                 fn(*args, **kwargs)
             except Exception as e:
-                self.root.after(0, lambda: messagebox.showerror("Error", str(e)))
+                tb = traceback.format_exc()
+                _log(f"Thread error:\n{tb}")
+                err_msg = f"{e}\n\nSee inputhog_debug.log for full traceback."
+                self.root.after(0, lambda m=err_msg: messagebox.showerror("Error", m))
             finally:
                 self.root.after(0, self._on_thread_done)
 
@@ -146,8 +183,8 @@ class InputHogApp:
             return
 
         def do():
-            def on_move(dx, dy, ok):
-                self.root.after(0, lambda: self._update_feedback(dx, dy, ok))
+            def on_move(dx, dy, ok, err=0):
+                self.root.after(0, lambda d=dx, e=dy, o=ok, r=err: self._update_feedback(d, e, o, r))
             with InputHogClient() as c:
                 test_square(c, size=50, delay_ms=30, on_move=on_move)
 
@@ -161,8 +198,8 @@ class InputHogApp:
             return
 
         def do():
-            def on_move(dx, dy, ok):
-                self.root.after(0, lambda: self._update_feedback(dx, dy, ok))
+            def on_move(dx, dy, ok, err=0):
+                self.root.after(0, lambda d=dx, e=dy, o=ok, r=err: self._update_feedback(d, e, o, r))
             with InputHogClient() as c:
                 test_circle(c, radius=30, steps=24, delay_ms=25, on_move=on_move)
 
@@ -181,7 +218,8 @@ class InputHogApp:
             messagebox.showerror("Invalid Input", "X and Y must be integers.")
             return
         ok = move(self.client, x, y)
-        self._update_feedback(x, y, ok)
+        err = self.client.get_last_error() if not ok else 0
+        self._update_feedback(x, y, ok, err)
 
     def run(self) -> None:
         self.root.mainloop()
@@ -189,8 +227,13 @@ class InputHogApp:
 
 
 def main() -> None:
-    app = InputHogApp()
-    app.run()
+    try:
+        app = InputHogApp()
+        app.run()
+    except Exception:
+        tb = traceback.format_exc()
+        _log(f"Startup error:\n{tb}")
+        raise
 
 
 if __name__ == "__main__":

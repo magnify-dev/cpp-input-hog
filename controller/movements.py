@@ -9,10 +9,11 @@ from typing import Callable, Optional
 from client import InputHogClient
 
 
-def _step(client: InputHogClient, dx: int, dy: int, delay_ms: float, on_move: Optional[Callable[[int, int, bool], None]]) -> bool:
+def _step(client: InputHogClient, dx: int, dy: int, delay_ms: float, on_move: Optional[Callable[..., None]]) -> bool:
     ok = client.move_mouse(dx, dy)
     if on_move:
-        on_move(dx, dy, ok)
+        err = client.get_last_error() if not ok else 0
+        on_move(dx, dy, ok, err)
     if delay_ms > 0:
         time.sleep(delay_ms / 1000.0)
     return ok

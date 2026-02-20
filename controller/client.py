@@ -33,12 +33,28 @@ class MOUSE_MOVE_REQUEST(ctypes.Structure):
     ]
 
 
+# Common Windows error codes for debugging
+ERROR_CODES = {
+    2: "ERROR_FILE_NOT_FOUND (driver/device not found)",
+    5: "ERROR_ACCESS_DENIED (run as Administrator)",
+    6: "ERROR_INVALID_HANDLE",
+    31: "ERROR_GEN_FAILURE (driver returned error)",
+    87: "ERROR_INVALID_PARAMETER (wrong buffer/IOCTL)",
+    1167: "ERROR_DEVICE_NOT_CONNECTED",
+}
+
+
 class InputHogClient:
     """Client for communicating with the InputHog kernel driver."""
 
     def __init__(self, device_path: str = r"\\.\InputHog"):
         self._device_path = device_path
         self._handle = None
+        self._last_error = 0
+
+    def get_last_error(self) -> int:
+        """Windows GetLastError() - call after a failed operation."""
+        return ctypes.windll.kernel32.GetLastError()
 
     def open(self) -> bool:
         """Open a handle to the driver. Returns True on success."""
@@ -51,7 +67,10 @@ class InputHogClient:
             FILE_ATTRIBUTE_NORMAL,
             None,
         )
-        return self._handle != wintypes.HANDLE(-1).value
+        ok = self._handle != wintypes.HANDLE(-1).value
+        if not ok:
+            self._last_error = self.get_last_error()
+        return ok
 
     def close(self) -> None:
         """Close the driver handle."""
@@ -82,6 +101,8 @@ class InputHogClient:
             ctypes.byref(bytes_returned),
             None,
         )
+        if not ok:
+            self._last_error = self.get_last_error()
         return bool(ok)
 
     def __enter__(self) -> "InputHogClient":

@@ -1,5 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 # PyInstaller spec for InputHog Control
+# For debugging: set console=True below and rebuild, or use InputHogControl-Debug.spec
 
 a = Analysis(
     ['app.py'],

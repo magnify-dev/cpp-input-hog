@@ -66,6 +66,23 @@ sc delete InputHog
 
 ---
 
+## Debugging
+
+**When errors occur and you can't see what's happening:**
+
+1. **Debug build** (console window shows tracebacks):
+   ```cmd
+   cd controller
+   build-debug.bat
+   ```
+   Run `dist/InputHogControl-Debug.exe` — a console window will appear with error output.
+
+2. **Log file** — All errors are also written to `inputhog_debug.log` (next to the exe).
+
+3. **Run from source** — Use `python app.py` to see output in the terminal.
+
+---
+
 ## Run from source (no build)
 
 ```cmd

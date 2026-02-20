@@ -61,7 +61,8 @@ class InputHogApp:
         status_row.pack(fill=tk.X)
         self.status_label = ttk.Label(status_row, text="Checking...")
         self.status_label.pack(side=tk.LEFT)
-        ttk.Button(status_row, text="Refresh", command=self._check_connection, width=8).pack(side=tk.RIGHT)
+        self.btn_refresh = ttk.Button(status_row, text="Refresh", command=self._check_connection, width=8)
+        self.btn_refresh.pack(side=tk.RIGHT)
         self.driver_label = ttk.Label(status_frame, text="", foreground="gray")
         self.driver_label.pack(anchor=tk.W)
 
@@ -102,7 +103,9 @@ class InputHogApp:
         self.help_text.pack(fill=tk.X, **pad)
 
     def _check_connection(self) -> None:
-        if self.client._handle:
+        if self._busy:
+            return
+        if self.client._handle is not None:
             self.client.close()
         self.connected = self.client.open()
         if not self.connected:
@@ -140,17 +143,19 @@ class InputHogApp:
         if not ok:
             self.error_count += 1
             msg = ERROR_CODES.get(error_code, f"Win32 error {error_code}")
-            if not self._last_error_msg or self.error_count == 1:
+            if msg != self._last_error_msg:
                 self._last_error_msg = msg
                 _log(f"Move failed: ({dx},{dy}) -> {msg} (code {error_code})")
             self.fb_label.config(text=f"Last: ({dx}, {dy})  |  Errors: {self.error_count}\n{msg}")
         else:
+            self._last_error_msg = ""
             self.fb_label.config(text=f"Last: ({dx}, {dy})  |  Errors: {self.error_count}")
 
     def _run_in_thread(self, fn, *args, **kwargs) -> None:
         if self._busy:
             return
         self._busy = True
+        self.btn_refresh.config(state=tk.DISABLED)
         self.btn_square.config(state=tk.DISABLED)
         self.btn_circle.config(state=tk.DISABLED)
         self.btn_move.config(state=tk.DISABLED)
@@ -170,6 +175,7 @@ class InputHogApp:
 
     def _on_thread_done(self) -> None:
         self._busy = False
+        self.btn_refresh.config(state=tk.NORMAL)
         if self.connected:
             self.btn_square.config(state=tk.NORMAL)
             self.btn_circle.config(state=tk.NORMAL)
@@ -185,8 +191,7 @@ class InputHogApp:
         def do():
             def on_move(dx, dy, ok, err=0):
                 self.root.after(0, lambda d=dx, e=dy, o=ok, r=err: self._update_feedback(d, e, o, r))
-            with InputHogClient() as c:
-                test_square(c, size=50, delay_ms=30, on_move=on_move)
+            test_square(self.client, size=50, delay_ms=30, on_move=on_move)
 
         self._run_in_thread(do)
 
@@ -200,8 +205,7 @@ class InputHogApp:
         def do():
             def on_move(dx, dy, ok, err=0):
                 self.root.after(0, lambda d=dx, e=dy, o=ok, r=err: self._update_feedback(d, e, o, r))
-            with InputHogClient() as c:
-                test_circle(c, radius=30, steps=24, delay_ms=25, on_move=on_move)
+            test_circle(self.client, radius=30, steps=24, delay_ms=25, on_move=on_move)
 
         self._run_in_thread(do)
 

@@ -21,6 +21,8 @@ IOCTL_INPUT_HOG_MOVE_MOUSE = _ctl_code(
 
 GENERIC_READ = 0x80000000
 GENERIC_WRITE = 0x40000000
+FILE_SHARE_READ = 0x00000001
+FILE_SHARE_WRITE = 0x00000002
 OPEN_EXISTING = 3
 FILE_ATTRIBUTE_NORMAL = 0x80
 
@@ -53,15 +55,15 @@ class InputHogClient:
         self._last_error = 0
 
     def get_last_error(self) -> int:
-        """Windows GetLastError() - call after a failed operation."""
-        return ctypes.windll.kernel32.GetLastError()
+        """Last Win32 error captured by this client."""
+        return self._last_error
 
     def open(self) -> bool:
         """Open a handle to the driver. Returns True on success."""
         self._handle = ctypes.windll.kernel32.CreateFileW(
             self._device_path,
             GENERIC_READ | GENERIC_WRITE,
-            0,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
             None,
             OPEN_EXISTING,
             FILE_ATTRIBUTE_NORMAL,
@@ -69,7 +71,10 @@ class InputHogClient:
         )
         ok = self._handle != wintypes.HANDLE(-1).value
         if not ok:
-            self._last_error = self.get_last_error()
+            self._handle = None
+            self._last_error = ctypes.windll.kernel32.GetLastError()
+        else:
+            self._last_error = 0
         return ok
 
     def close(self) -> None:
@@ -77,6 +82,7 @@ class InputHogClient:
         if self._handle is not None:
             ctypes.windll.kernel32.CloseHandle(self._handle)
             self._handle = None
+        self._last_error = 0
 
     def move_mouse(self, x: int, y: int) -> bool:
         """
@@ -84,6 +90,7 @@ class InputHogClient:
         Returns True if the IOCTL succeeded.
         """
         if self._handle is None:
+            self._last_error = 6  # ERROR_INVALID_HANDLE
             return False
 
         req = MOUSE_MOVE_REQUEST(x=x, y=y)
@@ -102,7 +109,9 @@ class InputHogClient:
             None,
         )
         if not ok:
-            self._last_error = self.get_last_error()
+            self._last_error = ctypes.windll.kernel32.GetLastError()
+        else:
+            self._last_error = 0
         return bool(ok)
 
     def __enter__(self) -> "InputHogClient":

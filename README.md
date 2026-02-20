@@ -31,6 +31,10 @@ build.bat
 
 Output: `controller/dist/InputHogControl.exe` (single executable)
 
+### Download pre-built .exe (GitHub Actions)
+
+Push to `main` or run the workflow manually: **Actions** → **Build Windows App** → **Run workflow**. Download `InputHogControl-Windows` from the run's artifacts.
+
 ---
 
 ## Install & Run

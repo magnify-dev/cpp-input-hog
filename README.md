@@ -39,6 +39,21 @@ Push to `main` or run the workflow manually: **Actions** → **Build Windows App
 
 ## Install & Run
 
+### One-command setup (recommended)
+
+Run in **elevated PowerShell** from repo root:
+
+```powershell
+.\setup-windows.ps1 -EnableTestSigning
+```
+
+This will:
+- enable test-signing (if needed),
+- install/update and start the `InputHog` driver service,
+- launch `InputHogControl.exe`.
+
+If test-signing was just enabled, reboot once, then run the script again.
+
 ### 1. Enable test signing (once)
 
 ```cmd
